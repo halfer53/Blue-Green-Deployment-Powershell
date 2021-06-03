@@ -2,8 +2,8 @@ $siteBlue = "http://alwaysup-blue:84"
 $siteGreen = "http://alwaysup-green:86"
 $siteBlueName = "mkr_umbraco_blue"
 $siteGreenName = "mkr_umbraco_green"
-$pathBlue = "D:\wwwroot\mkr_umbraco_blue"
-$pathGreen = "D:\wwwroot\mkr_umbraco_green"
+$pathBlue = "C:\wwwroot\mkr_umbraco_blue"
+$pathGreen = "C:\wwwroot\mkr_umbraco_green"
 $pathBlueContent = (Get-Content $pathBlue\up.html)
 
 $siteToWarm = $siteBlue
