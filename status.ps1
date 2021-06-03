@@ -1,5 +1,5 @@
-$bluePath = "D:\wwwroot\mkr_umbraco_blue"
-$greenPath = "D:\wwwroot\mkr_umbraco_green"
+$bluePath = "C:\wwwroot\mkr_umbraco_blue"
+$greenPath = "C:\wwwroot\mkr_umbraco_green"
 
 Import-Module WebAdministration
 function GetSite($name){
