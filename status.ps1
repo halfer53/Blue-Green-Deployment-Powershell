@@ -12,24 +12,28 @@ function GetSite($name){
     return $site
 }
 
+$downsite = $null
 $blue_site = GetSite mkr_umbraco_blue
 $green_site = GetSite mkr_umbraco_green
 
 
-echo "IIS STATUS"
+Write-Output "IIS STATUS"
 Write-Host "$($blue_site.SiteName) Status:  $($blue_site.Status) | App Pool: $($blue_site.AppPoolStatus)"
 Write-Host "$($green_site.SiteName) Status:  $($green_site.Status) | App Pool: $($green_site.AppPoolStatus)"
 
-echo "UP STATUS"
-$upPath = @($bluePath, $greenPath) | Where {
+Write-Output "UP STATUS"
+$upPath = @($bluePath, $greenPath) | Where-Object {
     (Get-Content "$($_)\up.html") -contains "up"
 }
 
-$downPath = if ($upPath -eq $bluePath) {
-    $greenPath
+if ($upPath -eq $bluePath) {
+    $downPath = $greenPath
+    $downsite = $green_site
 } else {
-    $bluePath
+    $downPath = $bluePath
+    $downsite = $blue_site
 }
 
 Write-Host "$($upPath) is up"
 Write-Host "$($downPath) is down"
+Write-Host "##vso[task.setvariable variable=DOWN_SITE]$($downsite.SiteName)"

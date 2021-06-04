@@ -2,6 +2,7 @@ param (
     [switch]$notransfer = $false
  )
 
+Import-Module WebAdministration
 $ErrorActionPreference = "Stop"
 $PSDefaultParameterValues['*:ErrorAction']='Stop'
 
@@ -15,9 +16,6 @@ $serverFarmName = "alwaysup"
 $greenServerAddress = "alwaysup-green"
 $blueServerAddress = "alwaysup-blue"
 
-$pathBlueContent = (Get-Content $pathBlue\up.html)
-$pathGreenContent = (Get-Content $pathGreen\up.html)
-
 $siteToWarm = $siteBlue
 $pathToBringDown = $pathGreen
 $siteToBringDown = $siteGreenName
@@ -29,15 +27,30 @@ $ServerToBringUp = $blueServerAddress
 $pages = '/','/yasi', '/contact', '/yasi/industry.htm', '/yasi/media.htm', 
             '/scholarship/', '/teacher', '/course', '/about', '/ieltsallaspects/speaking.htm',
             '/ieltsallaspects/listening.htm', '/ieltsallaspects/reading.htm','/ieltsallaspects/writing.htm',
-            '/teacher/20130515041127.htm', '/course/aquan7.htm', '/faq-2/', '/faq/'
+            '/course/aquan7.htm', '/faq/'
 
 function WarmSite($siteToWarm){
-    $time = Measure-Command {
-        $res = Invoke-WebRequest $siteToWarm
-    }
-    $ms = $time.TotalMilliSeconds
-    If ($ms -ge 400) {
-        Write-Host "$($res.StatusCode) from   $($siteToWarm) in $($ms)ms" -foreground "yellow"
+    Write-Host "Warming up $siteToWarm"
+    $attempts = 0
+    $res = $null
+    while ($true) {
+        if($attempts -gt 3){
+            Throw "Attempts exhausted for $siteToWarm"
+        }
+        try{
+            $time = Measure-Command {
+                $res = Invoke-WebRequest $siteToWarm
+            }
+            $ms = $time.TotalMilliSeconds
+            Write-Host "$($res.StatusCode) from $($siteToWarm) in $($ms)ms" -foreground "yellow"
+        }catch [Exception]{
+            Write-Output $_.Exception|format-list -force
+        }
+        
+        $attempts += 1
+        if($res.StatusCode -eq 200){
+            break
+        }
     }
     return $res.StatusCode
 }
@@ -119,20 +132,14 @@ function SetServerState{
     $methodInstance.Execute()
 }
 
-Import-Module WebAdministration
-
+$pathBlueContent = (Get-Content $pathBlue\up.html)
+$pathGreenContent = (Get-Content $pathGreen\up.html)
 
 $blue_info = GetSite($siteBlueName)
 $green_info = GetSite($siteGreenName)
 
-
-
 if ($pathBlueContent -contains 'up' )
 {
-    if($blue_info.Status -eq "Started" -And $green_info.Status -eq "Stopped" -And $pathGreenContent -contains 'down'){
-        Write-Host "The server is already in balanced state"
-        exit
-    }
     $siteToWarm = $siteGreen
     $pathToBringUp = $pathGreen
     $siteToBringUp = $siteGreenName
@@ -141,17 +148,23 @@ if ($pathBlueContent -contains 'up' )
     $ServerToBringDown = $blueServerAddress
     $ServerToBringUp = $greenServerAddress
 
-}
-elseif($blue_info.Status -eq "Stopped" -And $green_info.Status -eq "Started" -And $pathGreenContent -contains 'up'){
-    Write-Host "The server is already in balanced state"
-    exit
+}elseif($pathGreenContent -contains 'up'){
+    
+}else{
+    Write-Error "Both sites are up according to up.html"
 }
 
+Write-Host "$siteToBringUp is down"
+Write-Host "bringing $siteToBringUp site up"
+Write-Host "$siteToBringUp is the site to deploy\n" -foreground "yellow"
+
+Start-WebAppPool -name $siteToBringUp
+Start-WebSite -Name $siteToBringUp
 
 Write-Host "Copying media files from $pathToBringDown\media to $pathToBringUp\media "
 $Source = "$pathToBringDown\media"
 $Destination = "$pathToBringUp\media"
-Get-ChildItem $Source -Recurse | ForEach {
+Get-ChildItem $Source -Recurse | ForEach-Object {
     $ModifiedDestination = $($_.FullName).Replace("$Source","$Destination")
     If ((Test-Path $ModifiedDestination) -eq $False) {
         Copy-Item $_.FullName $ModifiedDestination
@@ -163,24 +176,15 @@ if($notransfer -eq $false){
     # Copy App_Data
     Write-Host "Copying App_Data from $pathToBringDown\App_Data $pathToBringUp\App_Data"
     $exclude_folders = "TEMP", "Logs"
-    $exclude_files = "umbraco.config"
+    # $exclude_files = "umbraco.config"
     Get-ChildItem "$pathToBringDown\App_Data" -Directory | 
         Where-Object{$_.Name -notin $exclude_folders} | 
         Copy-Item -Destination "$pathToBringUp\App_Data" -Recurse -Force
 }
 
-
-
-Write-Host "Restart $siteToBringUp"
-Stop-WebSite $siteToBringUp
-Start-WebSite $siteToBringUp
-
 $sitestatus = Get-WebsiteState -Name $siteToBringUp
 if ($sitestatus.Value -eq "Started"){
-    Write-Host "Warming up $($siteToWarm)"
-    Do {
-        $status = WarmSite($siteToWarm)
-    } While ($ms -ge 500)
+    $status = WarmSite($siteToWarm)
     # Write-Host "$($res.StatusCode) from $($siteToWarm) in $($ms)ms" -foreground "cyan"
     foreach ($page in $pages){
         $item = "$siteToWarm$page"
@@ -211,8 +215,6 @@ Catch [Exception]
     Write-Output $_.Exception|format-list -force
     exit 1
 }
-
-
 
 
 Write-Host "Watting for $ServerToBringUp to become healthy"
